@@ -72,6 +72,23 @@ export const openApiDocument = {
     "/api/auth/me": {
       get: { summary: "Get current user", tags: ["Auth"], responses: { "200": { description: "Current user" } } },
     },
+    "/api/complaints": {
+      post: {
+        summary: "Create complaint",
+        tags: ["Complaints"],
+        responses: { "201": { description: "Complaint created" } },
+      },
+      get: {
+        summary: "List complaints",
+        tags: ["Complaints"],
+        responses: { "200": { description: "List" } },
+      },
+    },
+    "/api/complaints/{id}": {
+      get: { summary: "Get complaint", tags: ["Complaints"], responses: { "200": { description: "Complaint" } } },
+      put: { summary: "Update complaint", tags: ["Complaints"], responses: { "200": { description: "Updated" } } },
+      delete: { summary: "Delete complaint", tags: ["Complaints"], responses: { "204": { description: "Deleted" } } },
+    },
   },
 } as const;
 
