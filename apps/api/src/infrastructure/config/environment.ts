@@ -10,6 +10,16 @@ const environmentSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
+  JWT_REFRESH_SECRET: z
+    .string()
+    .min(32)
+    .default("development-only-refresh-secret-change-before-production"),
+  ACCESS_TOKEN_EXPIRES_IN: z
+    .string()
+    .default("15m"),
+  REFRESH_TOKEN_EXPIRES_IN: z
+    .string()
+    .default("7d"),
   JWT_ACCESS_SECRET: z
     .string()
     .min(32)

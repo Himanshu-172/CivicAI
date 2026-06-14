@@ -30,6 +30,48 @@ export const openApiDocument = {
         },
       },
     },
+    "/api/auth/register": {
+      post: {
+        summary: "Register new user",
+        tags: ["Auth"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  email: { type: "string", format: "email" },
+                  password: { type: "string" },
+                  role: { type: "string" },
+                },
+                required: ["email", "password"],
+              },
+            },
+          },
+        },
+        responses: {
+          "201": { description: "User created" },
+        },
+      },
+    },
+    "/api/auth/login": {
+      post: {
+        summary: "Login and receive tokens",
+        tags: ["Auth"],
+        responses: { "200": { description: "Tokens" } },
+      },
+    },
+    "/api/auth/refresh": {
+      post: {
+        summary: "Refresh access token",
+        tags: ["Auth"],
+        responses: { "200": { description: "New tokens" } },
+      },
+    },
+    "/api/auth/me": {
+      get: { summary: "Get current user", tags: ["Auth"], responses: { "200": { description: "Current user" } } },
+    },
   },
 } as const;
 
