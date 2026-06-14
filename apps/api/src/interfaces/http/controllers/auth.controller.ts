@@ -1,4 +1,5 @@
 import type { RequestHandler } from "express";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 import {
   registerUser,
   authenticateUser,
@@ -7,31 +8,41 @@ import {
   storeRefreshToken,
   revokeRefreshToken,
   verifyRefreshToken,
+  verifyAccessToken,
 } from "../../../application/auth/auth-service.js";
 import { logger } from "../../../infrastructure/logging/logger.js";
+import type { UserPayload } from "../../../domain/user.js";
+import { UserRole } from "../../../domain/user.js";
 
-export const registerHandler: RequestHandler = async (req, res, next) => {
+type RegisterBody = { email: string; password: string; role?: string };
+export const registerHandler: RequestHandler = async (req, res, next): Promise<void> => {
   try {
-    const { email, password, role } = req.body;
-    const user = await registerUser(email, password, role);
+    const body = req.body as RegisterBody;
+    const role =
+      body.role && Object.values(UserRole).includes(body.role as UserRole)
+        ? (body.role as UserRole)
+        : undefined;
+    const user = await registerUser(body.email, body.password, role ?? UserRole.Citizen);
     res.status(201).json({ user });
   } catch (error) {
     next(error);
   }
 };
 
-export const loginHandler: RequestHandler = async (req, res, next) => {
+type LoginBody = { email: string; password: string };
+export const loginHandler: RequestHandler = async (req, res, next): Promise<void> => {
   try {
-    const { email, password } = req.body;
-    const user = await authenticateUser(email, password);
+    const body = req.body as LoginBody;
+    const user = await authenticateUser(body.email, body.password);
 
-    const payload = { id: user.id, email: user.email, role: user.role };
+    const id = String(user.id ?? user._id);
+  const role = user.role ?? UserRole.Citizen;
+    const payload: UserPayload = { id, email: String(user.email), role };
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
-    await storeRefreshToken(user.id, refreshToken);
+    await storeRefreshToken(id, refreshToken);
 
-    // set httpOnly refresh cookie as optional (not required by spec) - keep simple and return tokens in body
     res.status(200).json({ accessToken, refreshToken, user: payload });
   } catch (error) {
     logger.warn({ err: error }, "Login failed");
@@ -39,41 +50,37 @@ export const loginHandler: RequestHandler = async (req, res, next) => {
   }
 };
 
-export const logoutHandler: RequestHandler = async (req, res, next) => {
+export const logoutHandler: RequestHandler = async (req, res, next): Promise<void> => {
   try {
     const auth = req.authToken;
     if (!auth) {
-      // try to read user id from body
       const { userId } = req.body as { userId?: string };
       if (userId) await revokeRefreshToken(userId);
-      return res.status(200).json({ ok: true });
+      res.status(200).json({ ok: true });
+      return;
     }
 
-    // if auth token provided, try to decode and revoke all refresh tokens
-    // decode without verifying expiration
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const jwt = require("jsonwebtoken");
-    const decoded = jwt.decode(auth) as { id?: string } | null;
-    if (decoded?.id) await revokeRefreshToken(decoded.id);
+    const decoded = jwt.decode(auth) as JwtPayload | null;
+    const id = typeof decoded === "object" && decoded?.id ? String(decoded.id) : undefined;
+    if (id) await revokeRefreshToken(id);
 
-    return res.status(200).json({ ok: true });
+    res.status(200).json({ ok: true });
   } catch (error) {
     next(error);
   }
 };
 
-export const refreshHandler: RequestHandler = async (req, res, next) => {
+type RefreshBody = { refreshToken: string };
+export const refreshHandler: RequestHandler = async (req, res, next): Promise<void> => {
   try {
-    const { refreshToken } = req.body;
+    const { refreshToken } = req.body as RefreshBody;
     const { user, payload } = await verifyRefreshToken(refreshToken);
 
-    // issue new tokens
     const newAccess = signAccessToken(payload);
     const newRefresh = signRefreshToken(payload);
 
-    // rotate refresh tokens: remove old and store new
-    await revokeRefreshToken(user.id, refreshToken);
-    await storeRefreshToken(user.id, newRefresh);
+  await revokeRefreshToken(String(user.id ?? user._id), refreshToken);
+  await storeRefreshToken(String(user.id ?? user._id), newRefresh);
 
     res.status(200).json({ accessToken: newAccess, refreshToken: newRefresh });
   } catch (error) {
@@ -81,23 +88,21 @@ export const refreshHandler: RequestHandler = async (req, res, next) => {
   }
 };
 
-export const currentUserHandler: RequestHandler = async (req, res, next) => {
+export const currentUserHandler: RequestHandler = (req, res, next): void => {
   try {
     const token = req.authToken;
-    if (!token) return res.status(200).json({ user: null });
-
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const jwt = require("jsonwebtoken");
-    try {
-      const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET || "") as {
-        id: string;
-        email: string;
-        role: string;
-      };
-      res.status(200).json({ user: payload });
-    } catch (_e) {
+    if (!token) {
       res.status(200).json({ user: null });
+      return;
     }
+
+    const payload = verifyAccessToken(token);
+    if (!payload) {
+      res.status(200).json({ user: null });
+      return;
+    }
+
+    res.status(200).json({ user: payload });
   } catch (error) {
     next(error);
   }
